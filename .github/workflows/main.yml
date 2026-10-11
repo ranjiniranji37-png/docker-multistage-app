@@ -1,0 +1,41 @@
+name: Docker Build and Test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start containers
+        run: docker compose up --build -d
+
+      - name: Show image size
+        run: docker images
+
+      - name: Wait for health endpoint
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fs http://localhost:5000/health; then echo; break; fi
+            sleep 3
+          done
+
+      - name: Check database connection
+        run: curl -f http://localhost:5000/db
+
+      - name: Show container status
+        run: docker ps
+
+      - name: Test volume persistence
+        run: |
+          docker compose exec -T db psql -U notes -d notesdb -c "CREATE TABLE IF NOT EXISTS notes(id serial primary key, text text); INSERT INTO notes(text) VALUES ('persist test');"
+          docker compose restart db
+          sleep 10
+          docker compose exec -T db psql -U notes -d notesdb -c "SELECT * FROM notes;"
+
+      - name: Show logs
+        if: always()
+        run: docker compose logs
